@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cartas - Para mi flaquita</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="favicon.ico">
+</head>
+<body>
+    <header class="site-header">
+        <nav class="nav">
+            <a href="index.html">Inicio</a>
+            <a href="https://photos.app.goo.gl/8xG2i4rZLxnQSAGT9">Álbum</a>
+            <a href="cartas.html">Cartas</a>
+            <div style="margin-left:auto"></div>
+            <span id="auth-area"></span>
+        </nav>
+        <div id="auth-message" style="color:#b00; font-size:12px; margin:6px 12px 0 12px"></div>
+    </header>
+
+    <main class="container">
+        <h2 class="section-title">Archivo de nuestras cartas virtuales</h2>
+        <p class="muted">Aquí podremos escribir cartas y conservarlas... Elije la que quieras leer.</p>
+
+        <!-- Botones de filtro en las cartas -->
+        <div class="filter-buttons" style="display: flex; gap: 10px; margin: 20px 0; flex-wrap: wrap;">
+            <button class="btn-filter active" onclick="filtrarCartas('todas')" data-filter="todas">Todas</button>
+            <button class="btn-filter" onclick="filtrarCartas('yo')" data-filter="yo">Mis cartas</button>
+            <button class="btn-filter" onclick="filtrarCartas('ella')" data-filter="ella">Sus cartas</button>
+        </div>
+
+        <div class="cartas-index">
+            <!-- Carta 1 (predeterminada) -->
+            <div class="carta-item carta-predeterminada" id="carta-predeterminada">
+                <h3 class="carta-title">Para mi princesa <span style="font-size: 12px; color: #999;">(Mi carta)</span></h3>
+                <p class="carta-description">Desde que te hiciste presente en mi vida...</p>
+                <button class="btn btn-small" onclick="verCartaUnica()">Leer</button>
+            </div>
+
+            <!-- Escribir Nueva Carta -->
+            <div class="carta-item" id="item-escribir">
+                <h3 class="carta-title">Escribir Carta</h3>
+                <p class="carta-description">Crea una nueva carta especial...</p>
+                <button class="btn btn-small" id="btn-nueva-carta">Escribir</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal para escribir nueva carta -->
+    <div id="modal-nueva-carta" class="modal hidden">
+        <div class="modal-content">
+            <button class="modal-close" id="btn-cerrar-modal">&times;</button>
+            <h2 class="modal-title">Escribe una Nueva Carta</h2>
+            
+            <form id="form-nueva-carta" class="form-carta">
+                <div class="form-group">
+                    <label for="carta-autor">¿De quién es esta carta?</label>
+                    <select id="carta-autor" required style="padding: 10px 12px; border: 2px solid #ddd; border-radius: 6px; font-family: 'Inter', Arial, sans-serif; font-size: 14px;">
+                        <option value="">Selecciona...</option>
+                        <option value="yo">Mía (de mí)</option>
+                        <option value="ella">De ella</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="carta-titulo">Título de la carta:</label>
+                    <input type="text" id="carta-titulo" placeholder="Ej: Un pensamiento especial" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="carta-descripcion">Descripción corta:</label>
+                    <input type="text" id="carta-descripcion" placeholder="Ej: Una breve descripción..." required>
+                </div>
+
+                <div class="form-group">
+                    <label for="carta-contenido">Contenido de la carta:</label>
+                    <textarea id="carta-contenido" placeholder="Escribe tu carta aquí..." rows="12" required></textarea>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Guardar Carta</button>
+                    <button type="button" class="btn btn-secondary" id="btn-cancelar">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-analytics.js";
+        import { getDatabase, ref, push, onValue, get, remove } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-auth.js";
+
+        // ========== CONFIGURACIÓN FIREBASE (Base de datos, NO TOCAR!!) ==========
+        const firebaseConfig = {
+            apiKey: "AIzaSyCNK7tnh__ZO55p1cffDSPBYmSHMxHDnJ4",
+            authDomain: "cartas-justus.firebaseapp.com",
+            databaseURL: "https://cartas-justus-default-rtdb.firebaseio.com",
+            projectId: "cartas-justus",
+            storageBucket: "cartas-justus.firebasestorage.app",
+            messagingSenderId: "312127744196",
+            appId: "1:312127744196:web:95cffb7f072a70a6874191",
+            measurementId: "G-NKWGFCS248"
+        };
+
+        // Iniciar Firebase (modular)
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
+        const db = getDatabase(app);
+        const cartasRef = ref(db, 'cartas');
+
+        // Iniciar Auth
+        const auth = getAuth(app);
+        const provider = new GoogleAuthProvider();
+        let currentUser = null;
+
+        // Auth area
+        const authArea = document.getElementById('auth-area');
+
+        function renderAuthArea(user) {
+            if (!authArea) return;
+            authArea.innerHTML = '';
+            if (user) {
+                const name = user.displayName || user.email || 'Usuario';
+                authArea.innerHTML = `<span style="margin-right:8px; font-weight:600">${name}</span><button id=\"btn-logout\" class=\"btn btn-small\">Salir</button>`;
+                document.getElementById('btn-logout').addEventListener('click', async () => {
+                    await signOut(auth);
+                });
+            } else {
+                authArea.innerHTML = `<button id=\"btn-login\" class=\"btn btn-small\">Iniciar sesión</button>`;
+                document.getElementById('btn-login').addEventListener('click', async () => {
+                    const authMsg = document.getElementById('auth-message');
+                    if (authMsg) authMsg.textContent = '';
+                    try {
+                        await signInWithPopup(auth, provider);
+                    } catch(e) {
+                        console.error('signInWithPopup error:', e);
+                        // Mostrar mensaje claro en la UI
+                        if (authMsg) authMsg.textContent = 'Error al iniciar sesión: ' + (e.message || e.code || 'Ver consola para más detalles');
+                    }
+                });
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            renderAuthArea(user);
+            // recargar lista para ajustar botones (eliminar visible sólo para autor)
+            const authMsg = document.getElementById('auth-message');
+            if (authMsg) authMsg.textContent = '';
+            cargarCartas();
+        });
+
+        // ========== ELEMENTOS DEL DOM ==========
+        const btnNuevaCarta = document.getElementById('btn-nueva-carta');
+        const modal = document.getElementById('modal-nueva-carta');
+        const btnCerrarModal = document.getElementById('btn-cerrar-modal');
+        const btnCancelar = document.getElementById('btn-cancelar');
+        const formNuevaCarta = document.getElementById('form-nueva-carta');
+
+        // ========== ABRIR/CERRAR MODAL ==========
+        btnNuevaCarta.addEventListener('click', () => modal.classList.remove('hidden'));
+        function cerrarModal() { modal.classList.add('hidden'); formNuevaCarta.reset(); }
+        btnCerrarModal.addEventListener('click', cerrarModal);
+        btnCancelar.addEventListener('click', cerrarModal);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.classList.contains('hidden')) cerrarModal(); });
+
+        // ========== GUARDAR CARTA EN FIREBASE (modular) ==========
+        formNuevaCarta.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const titulo = document.getElementById('carta-titulo').value;
+            const descripcion = document.getElementById('carta-descripcion').value;
+            const contenido = document.getElementById('carta-contenido').value;
+            const autorTipo = document.getElementById('carta-autor').value;
+            const nuevaCarta = {
+                titulo,
+                descripcion,
+                contenido,
+                fecha: new Date().toLocaleDateString('es-ES'),
+                uid: currentUser ? currentUser.uid : null,
+                author: currentUser ? (currentUser.displayName || currentUser.email) : 'Anon',
+                autor_tipo: autorTipo
+            };
+            try {
+                await push(cartasRef, nuevaCarta);
+                alert('¡Carta guardada exitosamente!');
+                cerrarModal();
+            } catch (error) {
+                console.error('Error al guardar carta:', error);
+                alert('Error al guardar la carta. Verifica la conexión a Firebase.');
+            }
+        });
+
+        // ========== VARIABLE DE FILTRO GLOBAL ==========
+        let filtroActual = 'todas';
+
+        // ========== FILTRAR CARTAS ==========
+        window.filtrarCartas = function(filtro) {
+            filtroActual = filtro;
+            // Actualizar botones activos
+            document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`[data-filter="${filtro}"]`).classList.add('active');
+            
+            // Mostrar/ocultar carta predeterminada según filtro (solo en "Todas" y "yo")
+            const cartaPredeterminada = document.getElementById('carta-predeterminada');
+            if (filtro === 'ella') {
+                cartaPredeterminada.style.display = 'none';
+            } else {
+                cartaPredeterminada.style.display = 'block';
+            }
+            
+            // Recargar cartas con nuevo filtro
+            cargarCartas();
+        };
+
+        // ========== CARGAR CARTAS DE FIREBASE (modular) ==========
+        function cargarCartas() {
+            const cartasIndex = document.querySelector('.cartas-index');
+            // Limpiar cartas anteriores (excepto la primera y el botón de escribir)
+            const items = cartasIndex.querySelectorAll('.carta-item');
+            items.forEach((item, index) => { if (index > 1) item.remove(); });
+
+            onValue(cartasRef, (snapshot) => {
+                // limpiar previos (mantener primer dos items: carta 1 y escribir)
+                const existing = cartasIndex.querySelectorAll('.carta-item');
+                existing.forEach((item, idx) => { if (idx > 1) item.remove(); });
+
+                const cartas = snapshot.val() || {};
+                for (const [key, carta] of Object.entries(cartas)) {
+                    // Aplicar filtro
+                    if (filtroActual === 'yo' && carta.autor_tipo !== 'yo') continue;
+                    if (filtroActual === 'ella' && carta.autor_tipo !== 'ella') continue;
+
+                    const cartaItem = document.createElement('div');
+                    cartaItem.className = 'carta-item';
+                    const isOwner = currentUser && carta.uid && currentUser.uid === carta.uid;
+                    const eliminarBtn = isOwner ? `<button class="btn btn-small btn-danger" onclick="eliminarCarta('${key}')">Eliminar</button>` : '';
+                    
+                    // Mostrar indicador de quién escribió
+                    const indicadorAutor = carta.autor_tipo === 'yo' ? '(Mi carta)' : carta.autor_tipo === 'ella' ? '(Su carta)' : '';
+                    
+                    cartaItem.innerHTML = `
+                        <h3 class="carta-title">${carta.titulo} <span style="font-size: 12px; color: #999;">${indicadorAutor}</span></h3>
+                        <p class="carta-description">${carta.descripcion}</p>
+                        <p style="font-size: 12px; color: #999; margin: 8px 0;">Fecha: ${carta.fecha} · ${carta.author || ''}</p>
+                        <button class="btn btn-small" onclick="verCarta('${key}')">Leer</button>
+                        ${eliminarBtn}
+                    `;
+                    cartasIndex.appendChild(cartaItem);
+                }
+            });
+        }
+
+        // ========== VER CARTA (modular) ==========
+        async function verCarta(key) {
+            try {
+                const snapshot = await get(ref(db, `cartas/${key}`));
+                const carta = snapshot.val();
+                const modalVer = document.createElement('div');
+                modalVer.className = 'modal';
+                modalVer.innerHTML = `
+                    <div class="modal-content">
+                        <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+                        <h2 class="letter-title">${carta.titulo}</h2>
+                        <div class="letter">
+                            <p class="letter-body">${carta.contenido.replace(/\n/g, '<br>')}</p>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modalVer);
+            } catch (err) {
+                console.error('Error al leer carta:', err);
+            }
+        }
+
+        // ========== ELIMINAR CARTA (modular) ==========
+        async function eliminarCarta(key) {
+            if (!confirm('¿Estás seguro de que quieres eliminar esta carta?')) return;
+            try {
+                await remove(ref(db, `cartas/${key}`));
+            } catch (err) {
+                console.error('Error al eliminar:', err);
+            }
+        }
+
+        // ========== VER PRIMERA CARTA (estática) ==========
+        async function verCartaUnica() {
+            const carta = {
+                titulo: 'Para mi princesa',
+                contenido: `Desde que te hiciste presente en mi vida, algo cambió sin que yo lo notara del todo. Fue algo como si una luz nueva se encendiera en un rincón muy oscuro de mi interior, la zona que no podría llenar yo solo, llegaste para iluminar mi vida y hacer que cada momento que paso contigo este lleno de una felicidad indescriptible. Y aunque no hubo un instante específico donde todo hiciera clic, poco a poco me encontré pensando en ti más de lo que pensaba admitir. Fue tan suave… casi imperceptible… pero constante, como esas cosas que crecen en silencio hasta que un día te das cuenta de que ahí están, enormes, inevitables, imposibles de ignorar.
+
+A veces pienso en cómo habría sido mi vida si no te hubiera conocido; tal vez me ahorraría discusiones, sí, pero también sería muchísimo más vacía, perdería lo que en este punto de mi vida le da sentido a mi existir y me da todos los animos que necesito para no rendirme, pensar en una vida sin ti únicamente me deja un vacío que no tengo planeado sentir. Porque mi vida tú no solo llenaste mis días, sino también mis pensamientos, mis pequeñas rutinas en las que me encantaría que estuvieras, mis canciones favoritas que al escucharlas solo me hacen pensaren ti, mis noches más largas y cada pensamiento que incluyen. Sin darme cuenta, sin quejarme del proceso te convertiste en mi todo.
+
+Lo que siento por ti no nació de golpe, aunque todo inició muy rápido, nació como nacen las cosas que realmente importan: lento, sincero, profundo. Nació de conversaciones que no quería que terminaran, de silencios que eran cómodos, de la forma en la que cada detalle tuyo parecía encajar perfectamente con algo en mí que llevaba mucho tiempo esperando sentirse comprendido.
+
+Hay veces en los que me pregunto cómo es posible que alguien como tú exista, pienso "Algo tan perfecto no puede ser real". Tu forma de ser, de hablar, de reír, de mirarme… todo tiene una magia hipnotizante. De esas que iluminan. De esas que no buscan atención, pero la merecen toda. Se que tú no ves lo que yo veo como lo veo, pero ojalá algún día te puedas ver a través de mis ojos, así podrás comprender cuando te digo que no te veo defecto alguno, cuando digo que eres perfecta y que por muchas cosas que busques para hacerme cambiar de idea ninguna me va a hacer cambiar de parecer. Ojalá algún día puedas sentir la misma luz que tú has puesto en mi vida.
+
+Quisiera que supieras que me encantas. Y no es de una manera simple o pasajera, sino de una forma que se siente en el pecho, que se queda en la mente y que marca el corazón… Me encantas en cada aspecto por mas pequeño que sea. Me encantas cuando hablas con emoción, cuando te ríes, cuando te concentras, cuando te distraes, cuando estás feliz, cuando estás mas seria. Me encantas incluso en los momentos en los que no dices nada, porque tu presencia sola ya significa algo para mí.
+
+Mis sentimientos por ti son una mezcla de ternura, admiración y tranquilidad. Eres una personita que no necesita hacer algo extraordinario para volverse inolvidable; basta con que seas tú, con tu esencia y lo que demuestras. Y eso en parte es lo más bonito… que no necesito imaginarte diferente para sentir algo tan grande. Tal como eres, ya llenas más espacios en mi de los que imaginas.
+
+A veces, esas veces en las que pienso en el futuro… No imagino cosas perfectas ni fantasías imposibles. Solo te imagino a ti ahí, acompañando mis días, compartiendo cosas simples: una conversación larga, un paseo, una tarde tranquilita. Creeme que no necesito más que eso. No quiero historias sacadas de películas. Quiero una historia real, sincera, como tú.
+
+Me importas. Mucho más de lo que sé decir con palabras, mucho mas de lo que m desorganizada mente puede expresarte o demostrarte con solo textos o palabras. Me importa cómo estás, qué sientes, qué sueñas, qué temes, qué deseas. Me importa cada detalle pequeño que te conforma. Y aunque no siempre lo diga, aunque a veces me quede callado en muchas cosas en mi interior hay un amor tan grande que no cabe en algo breve. Por eso esta carta es larga, mas larga de lo normal. Porque tú mereces palabras largas, sentimientos largos, todo mi tiempo.
+
+Gracias mi amor. Gracias por existir. Gracias por lo que has despertado en mí. Gracias por la calma que me traes, por la alegría que me provocas. Gracias por dar vuelta a mi mundo, por opacar lo malo y hacer que esto parezca un lugar mucho mas agradable donde quedarme disfrutando… Y lo haré, creeme que disfrutare de cada pequeño instante en este mundo si tu estás incluida en el.
+
+No sé qué pasará mañana, ni dentro de un mes, ni dentro de un año. Pero sí sé que hoy, aquí, mientras escribo esto con el corazón en la mano, siento algo tan honesto y tan real que necesitaba dejarlo plasmado, no necesariamente por una ocasión especial, solo para tenerlo fijo, para que cuando quieras saber que es lo que siento por ti puedas leer esto y saber que en cada letra de esta carta va un pedacito de mi amor. Para que lo leas, para que lo guardes, para que sepas que alguien siempre piensa en ti con amor verdadero.
+
+Y si alguna vez dudas de tu valor, de lo que puedes lograr, recuerda esto:
+En algún lugar, en alguien, dejaste una huella tan profunda que se convirtió en una historia que merecía ser escrita.`
+            };
+            const modalVer = document.createElement('div');
+            modalVer.className = 'modal';
+            modalVer.innerHTML = `
+                <div class="modal-content">
+                    <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+                    <h2 class="letter-title">${carta.titulo}</h2>
+                    <div class="letter">
+                        <p class="letter-body">${carta.contenido.replace(/\n/g, '<br>')}</p>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modalVer);
+        }
+
+        // Exponer funciones al scope global para onclick HTML
+        window.verCarta = verCarta;
+        window.eliminarCarta = eliminarCarta;
+        window.verCartaUnica = verCartaUnica;
+
+        // ========== CARGAR AL INICIAR ==========
+        window.addEventListener('load', () => cargarCartas());
+    </script>
+</body>
+</html>
