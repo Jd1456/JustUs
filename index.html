@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>  
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Para mi flaquita</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="favicon.ico">
+</head>
+<body>
+    <header class="site-header">
+        <nav class="nav">
+            <a class="btn" href="index.html">Inicio</a>
+            <a class="btn" href="https://photos.app.goo.gl/8xG2i4rZLxnQSAGT9">Álbum</a>
+            <a class="btn" href="cartas.html">Cartas</a>
+            <a class="btn" href="metas.html">Metas</a>
+            <a class="btn nav-playlist" href="#" data-playlist="https://open.spotify.com/playlist/2dkkSFfnxJMaQlbMGio63p?si=7b68cd75d0e14456&pt=7e27daceed7647aa7554385e5c444cdf" aria-label="Abrir playlist en Spotify">Playlist</a>
+            <div style="margin-left:auto"></div>
+            <span id="auth-area"></span>
+        </nav>
+        <div id="auth-message" style="color:#b00; font-size:12px; margin:6px 12px 0 12px"></div>
+    </header>
+
+    <main class="hero">
+        <div class="love-banner hero-top">
+            <span class="love-text">Juli x David</span>
+        </div>
+        <h1 class="stacked">
+            <span>JUST</span>
+            <span>US</span>
+        </h1>
+    </main>
+    <div id="hearts" aria-hidden="true"></div>
+
+    <section class="actions">
+        <a class="btn" href="https://photos.app.goo.gl/8xG2i4rZLxnQSAGT9">Ver álbum de fotos</a>
+        <a class="btn" href="cartas.html">Cartas</a>
+        <a class="btn" href="metas.html">Metas </a>
+        <a class="btn" id="btn-spotify" href="#" data-playlist="https://open.spotify.com/playlist/2dkkSFfnxJMaQlbMGio63p?si=7b68cd75d0e14456&pt=7e27daceed7647aa7554385e5c444cdf" aria-label="Abrir playlist en Spotify">Playlist</a>
+    </section>
+    <!--Corazones flotantes -->
+    <script>
+    (function(){
+        const container = document.getElementById('hearts');
+        if (!container) return;
+
+        function random(min, max){ return Math.random() * (max - min) + min; }
+
+        function makeHeart(x, y, opts = {}){
+            const el = document.createElement('div');
+            el.className = 'heart';
+            const size = opts.size || (Math.random() < 0.6 ? 'small' : Math.random() < 0.5 ? 'medium' : 'large');
+            el.classList.add(size);
+            const color = opts.color || (Math.random() < 0.5 ? 'pink' : 'lilac');
+            el.classList.add(color);
+            el.innerHTML = '❤';
+
+            //Posicionamiento al inicio (coordenadas x,y)
+            const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+            const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+            el.style.left = (x != null ? x : random(0, vw)) + 'px';
+            // place at bottom if not provided
+            el.style.top = (y != null ? y : vh - 30) + 'px';
+
+            //Duración y animación
+            const dur = opts.duration || random(4200, 9000);
+            const anim = Math.random() < 0.6 ? 'floatUp' : 'floatUpSlow';
+            el.style.animation = `${anim} ${Math.round(dur)}ms linear forwards`;
+
+            //Movimiiento a los lados aleatorio
+            const drift = Math.round(random(-100, 100));
+            el.style.transform = `translateX(${drift * 0.1}px)`;
+
+            container.appendChild(el);
+
+            //Borrar el corazon al llegar arriba
+            setTimeout(()=> el.remove(), dur + 100);
+        }
+
+        // Autoaparición (ajustada según tamaño de pantalla)
+        const SMALL_SCREEN_MAX = 420;
+        const prm = window.matchMedia('(prefers-reduced-motion: reduce)');
+        let auto = null;
+        function setupAutoSpawn(){
+            if (auto) { clearInterval(auto); auto = null; }
+            if (prm.matches) return; // respeta reduced-motion
+            const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+            const isSmall = vw <= SMALL_SCREEN_MAX;
+            const interval = isSmall ? 2000 : 700; // más lento en pantallas pequeñas
+            auto = setInterval(()=>{
+                const vw2 = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+                const spawnCount = isSmall ? (Math.random() < 0.25 ? 2 : 1) : (Math.random() < 0.6 ? 2 : 1);
+                for (let i = 0; i < spawnCount; i++) {
+                    const x = random(vw2 * 0.08, vw2 * 0.92) + (i === 1 ? random(-40, 40) : 0);
+                    const size = isSmall ? (Math.random() < 0.88 ? 'small' : 'medium') : (Math.random() < 0.75 ? 'small' : 'medium');
+                    makeHeart(x, null, { size });
+                }
+            }, interval);
+        }
+        setupAutoSpawn();
+
+        //Click para aparecer corazón
+        document.addEventListener('click', (e)=>{
+            const tag = e.target.tagName.toLowerCase();
+            if (tag === 'a' || tag === 'button' || e.target.closest('.modal')) return;
+            makeHeart(e.clientX, e.clientY, { size: 'large', duration: 3000 });
+        });
+
+        let resizeTimer = null;
+        window.addEventListener('resize', ()=>{
+            if (resizeTimer) clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(()=> setupAutoSpawn(), 250);
+        });
+
+        if (prm.addEventListener) {
+            prm.addEventListener('change', (e)=>{ if (e.matches) { if (auto) { clearInterval(auto); auto = null; } } else setupAutoSpawn(); });
+        } else if (prm.addListener) {
+            prm.addListener((m)=>{ if (m.matches) { if (auto) { clearInterval(auto); auto = null; } } else setupAutoSpawn(); });
+        }
+
+    })();
+    </script>
+    <script src="./js/relationship-counter.js"></script>
+    <script type="module" src="./js/ui.js"></script>
+    <script type="module">
+        import { initAuthArea } from './js/auth.js';
+        initAuthArea('auth-area');
+    </script>
+</body>
+</html>

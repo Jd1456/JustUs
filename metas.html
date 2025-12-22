@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metas - Para mi flaquita</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="favicon.ico">
+</head>
+<body>
+    <header class="site-header">
+        <nav class="nav">
+            <a class="btn" href="index.html">Inicio</a>
+            <a class="btn" href="https://photos.app.goo.gl/8xG2i4rZLxnQSAGT9">Álbum</a>
+            <a class="btn" href="cartas.html">Cartas</a>
+            <a class="btn" href="metas.html">Metas</a>
+            <a class="btn nav-playlist" href="#" data-playlist="https://open.spotify.com/playlist/2dkkSFfnxJMaQlbMGio63p?si=7b68cd75d0e14456&pt=7e27daceed7647aa7554385e5c444cdf" aria-label="Abrir playlist en Spotify">Playlist</a>
+            <div style="margin-left:auto"></div>
+            <span id="auth-area"></span>
+        </nav>
+        <div id="auth-message" style="color:#b00; font-size:12px; margin:6px 12px 0 12px"></div>
+    </header>
+
+    <main class="container">
+        <h2 class="section-title">Metas y planes</h2>
+        <p class="muted">Tengamos metas en pareja, completemoslas juntos y disfrutemos de la compañía del otro mientras lo logramos</p>
+
+        <div class="meta-controls" style="display:flex; gap:12px; align-items:center; margin: 18px 0;">
+            <button class="btn btn-small" id="btn-nueva-meta">Nueva meta</button>
+            <div style="margin-left:auto; font-size:13px; color:#444">Sesión: <span id="session-user">(no iniciado)</span></div>
+        </div>
+
+        <div id="meta-form" class="modal hidden" style="position:static; background:transparent; box-shadow:none;">
+            <div class="modal-content">
+                <button class="modal-close" id="btn-cerrar-meta">&times;</button>
+                <h3 class="modal-title">Crear nueva meta</h3>
+                <form id="form-nueva-meta" class="form-carta">
+                    <div class="form-group">
+                        <label for="meta-titulo">Título</label>
+                        <input id="meta-titulo" required />
+                    </div>
+                    <div class="form-group">
+                        <label for="meta-descripcion">Descripción (opcional)</label>
+                        <input id="meta-descripcion" />
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-primary" type="submit">Guardar</button>
+                        <button class="btn btn-secondary" type="button" id="btn-cancelar-meta">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="metas-progress" class="metas-progress">
+            <div class="metas-progress-text" id="metas-progress-text">0/0</div>
+            <div class="metas-progress-bar-wrap"><div id="metas-progress-bar" class="metas-progress-bar" style="width:0%"></div></div>
+        </div>
+        <div id="metas-list" class="meta-list"></div>
+    </main>
+
+    <script type="module">
+        import { db, auth, provider, ref, push, onValue, update, remove, signInWithPopup, signOut, onAuthStateChanged } from './js/firebase-init.js';
+        import { showToast } from './js/toast.js';
+
+        // Estado runtime (Firebase)
+        let currentUser = null;
+        const metasRef = ref(db, 'metas');
+
+        const authArea = document.getElementById('auth-area');
+        const sessionUser = document.getElementById('session-user');
+
+        function renderAuthArea(user){
+            if (!authArea) return;
+            authArea.innerHTML = '';
+            if (user){
+                const name = user.displayName || user.email || 'Usuario';
+                authArea.innerHTML = `<span style="margin-right:8px; font-weight:600">${name}</span><button id=\"btn-logout\" class=\"btn btn-small\">Salir</button>`;
+                document.getElementById('btn-logout').addEventListener('click', async ()=> await signOut(auth));
+                sessionUser.textContent = name;
+            } else {
+                authArea.innerHTML = `<button id=\"btn-login\" class=\"btn btn-small\">Iniciar sesión</button>`;
+                document.getElementById('btn-login').addEventListener('click', async ()=>{
+                    try { await signInWithPopup(auth, provider); } catch(e) { console.error(e); showToast('Error al iniciar sesión: '+(e.message||e.code), 'error'); }
+                });
+                sessionUser.textContent = '(no iniciado)';
+            }
+        }
+
+        onAuthStateChanged(auth, (user)=>{
+            currentUser = user;
+            renderAuthArea(user);
+            cargarMetas();
+        });
+
+        // DOM
+        const btnNuevaMeta = document.getElementById('btn-nueva-meta');
+        const modalMeta = document.getElementById('meta-form');
+        const btnCerrarMeta = document.getElementById('btn-cerrar-meta');
+        const btnCancelarMeta = document.getElementById('btn-cancelar-meta');
+        const formNuevaMeta = document.getElementById('form-nueva-meta');
+        const metasList = document.getElementById('metas-list');
+
+        btnNuevaMeta.addEventListener('click', ()=>{
+            if (!currentUser) { showToast('Para crear una meta inicia sesión', 'warning'); return; }
+            modalMeta.classList.remove('hidden');
+        });
+        btnCerrarMeta.addEventListener('click', ()=> modalMeta.classList.add('hidden'));
+        btnCancelarMeta.addEventListener('click', ()=> modalMeta.classList.add('hidden'));
+
+        formNuevaMeta.addEventListener('submit', async (e)=>{
+            e.preventDefault();
+            if (!currentUser) { showToast('Debes iniciar sesión', 'warning'); return; }
+            const titulo = document.getElementById('meta-titulo').value.trim();
+            const descripcion = document.getElementById('meta-descripcion').value.trim();
+            if (!titulo) return;
+            const nuevaMeta = {
+                titulo,
+                descripcion,
+                completed: false,
+                createdAt: Date.now(),
+                uid: currentUser.uid,
+                author: currentUser.displayName || currentUser.email
+            };
+            try {
+                await push(metasRef, nuevaMeta);
+                formNuevaMeta.reset();
+                modalMeta.classList.add('hidden');
+                showToast('Meta guardada', 'success');
+            } catch(err) { console.error('Error adding meta', err); showToast('Error al guardar', 'error'); }
+        });
+
+        function renderMetaItem(key, meta){
+            const item = document.createElement('div');
+            item.className = 'meta-item' + (meta.completed ? ' completed' : '');
+            item.innerHTML = `
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <input type="checkbox" ${meta.completed ? 'checked' : ''} onchange="toggleMeta('${key}', this.checked)" />
+                    <div style="flex:1">
+                        <div class="meta-title">${escapeHtml(meta.titulo)}</div>
+                        <div style="font-size:13px; color:#666">${escapeHtml(meta.descripcion||'')}</div>
+                        <div style="font-size:12px; color:#999; margin-top:6px">${new Date(meta.createdAt).toLocaleString('es-ES')} · ${escapeHtml(meta.author||'')}</div>
+                    </div>
+                    ${currentUser && meta.uid && currentUser.uid === meta.uid ? `<button class="btn btn-small btn-danger" onclick="eliminarMeta('${key}')">Eliminar</button>` : ''}
+                </div>
+            `;
+            return item;
+        }
+
+        window.toggleMeta = async function(key, checked){
+            if (!currentUser) { showToast('Inicia sesión para marcar metas', 'warning'); return; }
+            try {
+                await update(ref(db, `metas/${key}`), { completed: !!checked, completedAt: checked ? Date.now() : null, completedBy: checked ? currentUser.uid : null });
+            } catch(err){ console.error(err); showToast('Error al actualizar', 'error'); }
+        };
+
+        window.eliminarMeta = async function(key){
+            if (!confirm('¿Quieres eliminar esta meta?')) return;
+            try { await remove(ref(db, `metas/${key}`)); } catch(err){ console.error(err); showToast('Error al eliminar', 'error'); }
+        };
+
+        function cargarMetas(){
+            metasList.innerHTML = '';
+            onValue(metasRef, (snapshot)=>{
+                metasList.innerHTML = '';
+                const metas = snapshot.val() || {};
+                const arr = Object.entries(metas).sort((a,b)=> (b[1].createdAt||0) - (a[1].createdAt||0));
+
+                //Barra de progreso
+                const total = arr.length;
+                const completed = arr.filter(([,m]) => m.completed).length;
+                const pct = total === 0 ? 0 : Math.round((completed/total)*100);
+                const progressBar = document.getElementById('metas-progress-bar');
+                const progressText = document.getElementById('metas-progress-text');
+                if (progressBar) progressBar.style.width = pct + '%';
+                if (progressText) progressText.textContent = `${completed}/${total} · ${pct}%`;
+
+                for (const [key, meta] of arr){
+                    metasList.appendChild(renderMetaItem(key, meta));
+                }
+            });
+        }
+
+        function escapeHtml(str){ return String(str).replace(/[&<>"']/g, (s)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
+
+        cargarMetas();
+
+    </script>
+    <script src="./js/relationship-counter.js"></script>
+    <script type="module" src="./js/ui.js"></script>
+</body>
+</html>
